@@ -26,6 +26,28 @@ fn hex_to_byte(h: char) -> u8 {
     }
 }
 
+fn byte_to_hex(b: u8) -> char {
+    match b {
+        0b0000u8 => '0',
+        0b0001u8 => '1',
+        0b0010u8 => '2',
+        0b0011u8 => '3',
+        0b0100u8 => '4',
+        0b0101u8 => '5',
+        0b0110u8 => '6',
+        0b0111u8 => '7',
+        0b1000u8 => '8',
+        0b1001u8 => '9',
+        0b1010u8 => 'a',
+        0b1011u8 => 'b',
+        0b1100u8 => 'c',
+        0b1101u8 => 'd',
+        0b1110u8 => 'e',
+        0b1111u8 => 'f',
+        _ => panic!("Invalid Hex Digit"),
+    }
+}
+
 fn byte_to_base64(byte: u8) -> char {
     // https://datatracker.ietf.org/doc/html/rfc4648#section-4
     match byte {
@@ -97,6 +119,16 @@ fn byte_to_base64(byte: u8) -> char {
     }
 }
 
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    // let mut iter = bytes.iter();
+    let mut s = String::new();
+    for byte in bytes {
+        s.push(byte_to_hex(byte >> 4));
+        s.push(byte_to_hex(byte & 0b00001111u8));
+    }
+    s
+}
+
 fn hex_to_bytes(input: &str) -> Vec<u8> {
     let mut bytes: Vec<u8> = Vec::new();
     let mut iter = input.chars();
@@ -159,6 +191,15 @@ pub fn hex_to_base64(input: &str) -> String {
     bytes_to_base64(&hex_to_bytes(input))
 }
 
+pub fn fixed_xor(left: &[u8], right: &[u8]) -> Vec<u8> {
+    assert!(left.len() == right.len());
+    let mut bytes: Vec<u8> = Vec::new();
+    for (l, r) in left.iter().zip(right) {
+        bytes.push(l ^ r);
+    }
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +255,18 @@ mod tests {
         assert_eq!(
             hex_to_base64("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"),
             "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
+        );
+    }
+
+    #[test]
+    fn fixed_xor_test() {
+        // https://cryptopals.com/sets/1/challenges/2
+        assert_eq!(
+            bytes_to_hex(&fixed_xor(
+                &hex_to_bytes("1c0111001f010100061a024b53535009181c"),
+                &hex_to_bytes("686974207468652062756c6c277320657965")
+            )),
+            "746865206b696420646f6e277420706c6179"
         );
     }
 }
