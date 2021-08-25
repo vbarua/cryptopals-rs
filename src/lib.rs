@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::fs;
+use std::io;
+
 fn hex_to_byte(h: char) -> u8 {
     match h {
         '0' => 0b0000u8,
@@ -200,6 +204,98 @@ pub fn fixed_xor(left: &[u8], right: &[u8]) -> Vec<u8> {
     bytes
 }
 
+pub fn xor_with_pattern(input: &[u8], pattern: &[u8]) -> Vec<u8> {
+    let mut bytes: Vec<u8> = Vec::new();
+    for (l, r) in input.iter().zip(pattern.iter().cycle()) {
+        bytes.push(l ^ r);
+    }
+    bytes
+}
+
+fn load_dictionary() -> io::Result<Vec<String>> {
+    let file = fs::File::open("/usr/share/dict/words")?;
+    let reader = io::BufReader::new(file);
+
+    let mut words: Vec<String> = Vec::new();
+    for line in io::BufRead::lines(reader) {
+        words.push(line?);
+    }
+    io::Result::Ok(words)
+}
+
+fn compute_letter_frequency(words: &[String]) -> HashMap<char, usize> {
+    let mut counts: HashMap<char, usize> = HashMap::new();
+    for word in words {
+        for c in word.to_lowercase().chars() {
+            match counts.get_mut(&c) {
+                None => {
+                    counts.insert(c, 1);
+                }
+                Some(count) => *count += 1,
+            }
+        }
+    }
+    counts
+}
+
+pub struct TextScorer {
+    character_distributions: Vec<(char, f64)>,
+}
+
+impl TextScorer {
+    pub fn new() -> TextScorer {
+        let words = load_dictionary().unwrap();
+        let character_frequencies: Vec<(char, usize)> =
+            compute_letter_frequency(&words).into_iter().collect();
+        let total_characters: usize = character_frequencies.iter().map(|&(_, f)| f).sum();
+        let character_distributions: Vec<(char, f64)> = character_frequencies
+            .into_iter()
+            .map(|(c, f)| (c, (f as f64) / (total_characters as f64)))
+            .collect();
+
+        TextScorer {
+            character_distributions,
+        }
+    }
+
+    pub fn score(&self, input: &str) -> f64 {
+        let total_characters = input.len() as f64;
+        let input_character_frequencies = compute_letter_frequency(&[input.to_string()]);
+        let input_character_distributions: HashMap<char, f64> = input_character_frequencies
+            .into_iter()
+            .map(|(k, f)| (k, (f as f64) / total_characters))
+            .collect();
+        let mut score: f64 = 0.0;
+        for (c, expected_frequency) in self.character_distributions.iter() {
+            match input_character_distributions.get(c) {
+                Some(input_frequency) => score += (expected_frequency - input_frequency).powi(2),
+                None => score += expected_frequency.powi(2),
+            }
+        }
+        score
+    }
+}
+
+pub fn break_single_byte_xor(input: &str) -> String {
+    let scorer = TextScorer::default();
+    let bytes = hex_to_bytes(input);
+    let mut guesses: Vec<(f64, String)> = Vec::new();
+    for b in 0b00000000u8..=0b11111111u8 {
+        let decoded = xor_with_pattern(&bytes, &[b]);
+        if let Ok(text) = String::from_utf8(decoded) {
+            guesses.push((scorer.score(&text), text));
+        }
+    }
+    guesses.sort_by(|a, b| a.0.partial_cmp(&(b.0)).unwrap());
+    guesses[0].1.clone()
+}
+
+impl Default for TextScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +363,42 @@ mod tests {
                 &hex_to_bytes("686974207468652062756c6c277320657965")
             )),
             "746865206b696420646f6e277420706c6179"
+        );
+    }
+
+    #[test]
+    fn load_dictionary_test() {
+        let words = load_dictionary().unwrap();
+        assert!(!words.is_empty());
+    }
+
+    #[test]
+    fn compute_letter_frequency_test() {
+        let words = vec![
+            "a".to_string(),
+            "bb".to_string(),
+            "ccc".to_string(),
+            "dddd".to_string(),
+            "zzzzz".to_string(),
+            "++++++".to_string(),
+        ];
+        let counts = compute_letter_frequency(&words);
+        assert_eq!(counts[&'a'], 1);
+        assert_eq!(counts[&'b'], 2);
+        assert_eq!(counts[&'c'], 3);
+        assert_eq!(counts[&'d'], 4);
+        assert_eq!(counts[&'z'], 5);
+        assert_eq!(counts[&'+'], 6);
+    }
+
+    #[test]
+    fn break_single_byte_xor_test() {
+        // https://cryptopals.com/sets/1/challenges/3
+        assert_eq!(
+            break_single_byte_xor(
+                "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736",
+            ),
+            "Cooking MC's like a pound of bacon"
         );
     }
 }
