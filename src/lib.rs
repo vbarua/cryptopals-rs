@@ -287,20 +287,29 @@ impl TextScorer {
         }
         score
     }
-}
 
-pub fn break_single_byte_xor(input: &str) -> String {
-    let scorer = TextScorer::default();
-    let bytes = hex_to_bytes(input);
-    let mut guesses: Vec<(f64, String)> = Vec::new();
-    for b in 0b00000000u8..=0b11111111u8 {
-        let decoded = xor_with_pattern(&bytes, &[b]);
-        if let Ok(text) = String::from_utf8(decoded) {
-            guesses.push((scorer.score(&text), text));
+    pub fn break_single_byte_xor(&self, bytes: &[u8]) -> Option<(f64, String)> {
+        let mut guesses: Vec<(f64, String)> = Vec::new();
+        for b in 0b00000000u8..=0b11111111u8 {
+            let decoded = xor_with_pattern(bytes, &[b]);
+            if let Ok(text) = String::from_utf8(decoded) {
+                guesses.push((self.score(&text), text));
+            }
         }
+        guesses.sort_by(|a, b| a.0.partial_cmp(&(b.0)).unwrap());
+        guesses.get(0).map(|(score, text)| (*score, text.clone()))
     }
-    guesses.sort_by(|a, b| a.0.partial_cmp(&(b.0)).unwrap());
-    guesses[0].1.clone()
+
+    pub fn detect_single_byte_xor(&self, inputs: &[Vec<u8>]) -> Option<(f64, String)> {
+        let mut guesses: Vec<(f64, usize, String)> = Vec::new();
+        for (line, input) in inputs.iter().enumerate() {
+            if let Some(g) = self.break_single_byte_xor(input) {
+                guesses.push((g.0, line, g.1));
+            }
+        }
+        guesses.sort_by(|a, b| a.0.partial_cmp(&(b.0)).unwrap());
+        guesses.get(0).map(|g| (g.0, g.2.clone()))
+    }
 }
 
 impl Default for TextScorer {
@@ -407,11 +416,41 @@ mod tests {
     #[test]
     fn break_single_byte_xor_test() {
         // https://cryptopals.com/sets/1/challenges/3
+        let scorer = TextScorer::default();
         assert_eq!(
-            break_single_byte_xor(
-                "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736",
-            ),
+            scorer
+                .break_single_byte_xor(&hex_to_bytes(
+                    "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
+                ))
+                .unwrap()
+                .1,
             "Cooking MC's like a pound of bacon"
+        );
+
+        assert_eq!(
+            scorer
+                .break_single_byte_xor(&hex_to_bytes(
+                    "7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f"
+                ))
+                .unwrap()
+                .1,
+            "Now that the party is jumping\n"
+        );
+    }
+
+    #[test]
+    fn detect_single_byte_xor_test() {
+        // https://cryptopals.com/sets/1/challenges/4
+        let scorer = TextScorer::default();
+
+        let file = fs::File::open("src/resources/set1challenge4.txt").unwrap();
+        let reader = io::BufReader::new(file);
+        let inputs: Vec<Vec<u8>> = io::BufRead::lines(reader)
+            .map(|l| hex_to_bytes(&l.unwrap()))
+            .collect();
+        assert_eq!(
+            scorer.detect_single_byte_xor(&inputs).unwrap().1,
+            "Now that the party is jumping\n"
         );
     }
 }
