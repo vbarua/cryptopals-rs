@@ -318,6 +318,28 @@ impl Default for TextScorer {
     }
 }
 
+fn _hamming_distance(x: u8, y: u8) -> usize {
+    // https://en.wikipedia.org/wiki/Hamming_distance
+    let mut z = x ^ y;
+    let mut ones = 0;
+    while z != 0 {
+        if (z & 0b00000001u8) == 1 {
+            ones += 1;
+        }
+        z >>= 1;
+    }
+    ones
+}
+
+fn hamming_distance(x: &[u8], y: &[u8]) -> usize {
+    assert!(x.len() == y.len());
+    let mut distance = 0;
+    for (l, r) in x.iter().zip(y.iter()) {
+        distance += _hamming_distance(*l, *r);
+    }
+    distance
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,5 +486,10 @@ mod tests {
             output,
             "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
         );
+    }
+
+    #[test]
+    fn hamming_distance_test() {
+        assert_eq!(hamming_distance(b"this is a test", b"wokka wokka!!!"), 37)
     }
 }
