@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 
@@ -239,37 +240,49 @@ fn compute_letter_frequency(words: &[String]) -> HashMap<char, usize> {
 }
 
 pub struct TextScorer {
-    character_distributions: Vec<(char, f64)>,
+    character_distributions: HashMap<char, f64>,
+    ignore_list: HashSet<char>,
 }
 
 impl TextScorer {
     pub fn new() -> TextScorer {
         let words = load_dictionary().unwrap();
-        let character_frequencies: Vec<(char, usize)> =
-            compute_letter_frequency(&words).into_iter().collect();
-        let total_characters: usize = character_frequencies.iter().map(|&(_, f)| f).sum();
-        let character_distributions: Vec<(char, f64)> = character_frequencies
+        let character_frequencies: HashMap<char, usize> = compute_letter_frequency(&words);
+        let total_characters: usize = character_frequencies.values().sum();
+        let character_distributions: HashMap<char, f64> = character_frequencies
             .into_iter()
             .map(|(c, f)| (c, (f as f64) / (total_characters as f64)))
+            .collect();
+        let ignore_list: HashSet<char> = [' ', ',', '.', '?', '\'', '"', '\n']
+            .iter()
+            .cloned()
             .collect();
 
         TextScorer {
             character_distributions,
+            ignore_list,
         }
     }
 
     pub fn score(&self, input: &str) -> f64 {
         let total_characters = input.len() as f64;
         let input_character_frequencies = compute_letter_frequency(&[input.to_string()]);
-        let input_character_distributions: HashMap<char, f64> = input_character_frequencies
+        let mut input_character_distributions: HashMap<char, f64> = input_character_frequencies
             .into_iter()
             .map(|(k, f)| (k, (f as f64) / total_characters))
             .collect();
+        for c in 'a'..='z' {
+            // If the character is not present on the input, it's distribution is 0.
+            input_character_distributions.entry(c).or_insert(0.0);
+        }
         let mut score: f64 = 0.0;
-        for (c, expected_frequency) in self.character_distributions.iter() {
-            match input_character_distributions.get(c) {
-                Some(input_frequency) => score += (expected_frequency - input_frequency).powi(2),
-                None => score += expected_frequency.powi(2),
+        for (c, input_frequency) in input_character_distributions
+            .iter()
+            .filter(|&(c, _)| !self.ignore_list.contains(c))
+        {
+            match self.character_distributions.get(c) {
+                Some(expected_frequency) => score += (expected_frequency - input_frequency).powi(2),
+                None => score += 1.0, // Penalize non-standard characters
             }
         }
         score
